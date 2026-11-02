@@ -63,6 +63,11 @@ tu_link_with = []
 tu_deps = []
 tu_flags = []
 
+if with_platform_ohos
+  libtu_files += files('tu_ohos.cc')
+  tu_deps += dependency('qcom-native-buffer')
+endif
+
 tu_wsi = false
 
 if with_platform_x11

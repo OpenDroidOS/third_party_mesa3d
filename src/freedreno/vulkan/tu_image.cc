@@ -9,6 +9,10 @@
 
 #include "tu_image.h"
 
+#if DETECT_OS_OHOS
+#include "tu_ohos.h"
+#endif
+
 #include "fdl/fd6_format_table.h"
 #include "common/freedreno_lrz.h"
 
@@ -779,6 +783,15 @@ tu_CreateImage(VkDevice _device,
    if (!image)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+#if DETECT_OS_OHOS
+   const VkNativeBufferOHOS *ohos_native =
+      vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_OHOS);
+   const BufferHandle *ohos_handle = ohos_native ?
+      reinterpret_cast<const BufferHandle *>(ohos_native->handle) : nullptr;
+   VkSubresourceLayout ohos_planes[TU_MAX_PLANE_COUNT];
+   struct tu_ohos_buffer ohos_buffer;
+#endif
+
    if (pCreateInfo->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       const VkImageDrmFormatModifierListCreateInfoEXT *mod_info =
          vk_find_struct_const(pCreateInfo->pNext,
@@ -825,6 +838,22 @@ tu_CreateImage(VkDevice _device,
    if (result != VK_SUCCESS)
       goto fail;
 
+#if DETECT_OS_OHOS
+   if (ohos_native) {
+      result = tu_ohos_buffer_layout(device, pCreateInfo, ohos_handle, &modifier,
+                                    ohos_planes, &ohos_buffer);
+      if (result != VK_SUCCESS)
+         goto fail;
+      if (modifier == DRM_FORMAT_MOD_QCOM_COMPRESSED &&
+          (image->force_linear_tile || !image->ubwc_enabled)) {
+         result = vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
+         goto fail;
+      }
+      plane_layouts = ohos_planes;
+      image->vk.external_handle_types |= VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+   }
+#endif
+
    /* This section is removed by the optimizer for non-ANDROID builds */
    if (vk_image_is_android_hardware_buffer(&image->vk)) {
       /* At this time, an AHB handle is not yet provided.
@@ -838,6 +867,14 @@ tu_CreateImage(VkDevice _device,
                                                     plane_layouts);
    if (result != VK_SUCCESS)
       goto fail;
+
+#if DETECT_OS_OHOS
+   if (ohos_native) {
+      result = tu_ohos_import_buffer(device, image, &ohos_buffer, alloc);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+#endif
 
    /* This section is removed by the optimizer for non-ANDROID builds */
    if (vk_image_is_android_native_buffer(&image->vk)) {
@@ -857,6 +894,9 @@ tu_CreateImage(VkDevice _device,
 
    return VK_SUCCESS;
 fail:
+#if DETECT_OS_OHOS
+   tu_ohos_free_buffer(device, image, alloc);
+#endif
    vk_image_destroy(&device->vk, alloc, &image->vk);
    return result;
 }
@@ -877,6 +917,10 @@ tu_DestroyImage(VkDevice _device,
 
 #ifdef HAVE_PERFETTO
    tu_perfetto_log_destroy_image(device, image);
+#endif
+
+#if DETECT_OS_OHOS
+   tu_ohos_free_buffer(device, image, pAllocator);
 #endif
 
    if (image->iova)

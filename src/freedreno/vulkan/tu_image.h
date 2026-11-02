@@ -47,6 +47,10 @@ struct tu_image
    bool ubwc_enabled;
    bool force_linear_tile;
    bool is_mutable;
+
+#if DETECT_OS_OHOS
+   VkDeviceMemory ohos_memory;
+#endif
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(tu_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
 
