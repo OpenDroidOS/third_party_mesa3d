@@ -23,6 +23,10 @@
 
 #include "vk_queue.h"
 
+#if DETECT_OS_OHOS
+#include "vk_ohos.h"
+#endif
+
 #include "util/perf/cpu_trace.h"
 #include "util/u_debug.h"
 #include <inttypes.h>
@@ -1365,6 +1369,10 @@ vk_queue_finish(struct vk_queue *queue)
       device->dispatch_table.DestroySemaphore(vk_device_to_handle(device),
                                               queue->anb_semaphore, NULL);
    }
+#endif
+
+#if DETECT_OS_OHOS
+   vk_ohos_queue_finish(queue);
 #endif
 
    cnd_destroy(&queue->submit.pop);

@@ -163,6 +163,14 @@ struct vk_queue {
     */
    VkSemaphore anb_semaphore;
 #endif
+
+#if DETECT_OS_OHOS
+   /* Keep the export semaphore alive until queue destruction. A failed export
+    * leaves its signal payload pending and must be retried before reuse.
+    */
+   VkSemaphore ohos_release_semaphore;
+   bool ohos_release_pending;
+#endif
 };
 
 VK_DEFINE_HANDLE_CASTS(vk_queue, base, VkQueue, VK_OBJECT_TYPE_QUEUE)

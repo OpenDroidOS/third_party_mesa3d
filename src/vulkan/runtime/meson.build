@@ -64,6 +64,10 @@ if with_platform_android
   vulkan_lite_runtime_deps += [dep_android, idep_u_gralloc]
 endif
 
+if with_platform_ohos
+  vulkan_lite_runtime_files += files('vk_ohos.c')
+endif
+
 vk_common_entrypoints = custom_target(
   'vk_common_entrypoints',
   input : [vk_entrypoints_gen, vk_api_xml],
