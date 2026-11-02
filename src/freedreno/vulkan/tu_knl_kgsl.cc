@@ -99,7 +99,9 @@ bo_init_new_dmaheap(struct tu_device *dev, struct tu_bo **out_bo, uint64_t size,
                        "DMA_HEAP_IOCTL_ALLOC failed (%s)", strerror(errno));
    }
 
-   return tu_bo_init_dmabuf(dev, out_bo, -1, alloc.fd);
+   VkResult result = tu_bo_init_dmabuf(dev, out_bo, -1, alloc.fd);
+   close(alloc.fd);
+   return result;
 }
 
 static VkResult
@@ -120,7 +122,9 @@ bo_init_new_ion(struct tu_device *dev, struct tu_bo **out_bo, uint64_t size,
                        "ION_IOC_NEW_ALLOC failed (%s)", strerror(errno));
    }
 
-   return tu_bo_init_dmabuf(dev, out_bo, -1, alloc.fd);
+   VkResult result = tu_bo_init_dmabuf(dev, out_bo, -1, alloc.fd);
+   close(alloc.fd);
+   return result;
 }
 
 static VkResult
@@ -149,8 +153,11 @@ bo_init_new_ion_legacy(struct tu_device *dev, struct tu_bo **out_bo, uint64_t si
 
    ret = safe_ioctl(dev->physical_device->kgsl_dma_fd, ION_IOC_SHARE, &share);
    if (ret) {
+      int error = errno;
+      struct ion_handle_data free = { .handle = alloc.handle };
+      safe_ioctl(dev->physical_device->kgsl_dma_fd, ION_IOC_FREE, &free);
       return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                       "ION_IOC_SHARE failed (%s)", strerror(errno));
+                       "ION_IOC_SHARE failed (%s)", strerror(error));
    }
 
    struct ion_handle_data free = {
@@ -158,11 +165,15 @@ bo_init_new_ion_legacy(struct tu_device *dev, struct tu_bo **out_bo, uint64_t si
    };
    ret = safe_ioctl(dev->physical_device->kgsl_dma_fd, ION_IOC_FREE, &free);
    if (ret) {
+      int error = errno;
+      close(share.fd);
       return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                       "ION_IOC_FREE failed (%s)", strerror(errno));
+                       "ION_IOC_FREE failed (%s)", strerror(error));
    }
 
-   return tu_bo_init_dmabuf(dev, out_bo, -1, share.fd);
+   VkResult result = tu_bo_init_dmabuf(dev, out_bo, -1, share.fd);
+   close(share.fd);
+   return result;
 }
 
 static VkResult
@@ -283,6 +294,11 @@ kgsl_bo_init_dmabuf(struct tu_device *dev,
                     uint64_t size,
                     int fd)
 {
+   int shared_fd = os_dupfd_cloexec(fd);
+   if (shared_fd < 0)
+      return vk_error(dev, errno == EMFILE || errno == ENFILE ?
+                            VK_ERROR_TOO_MANY_OBJECTS : VK_ERROR_OUT_OF_HOST_MEMORY);
+
    struct kgsl_gpuobj_import_dma_buf import_dmabuf = {
       .fd = fd,
    };
@@ -296,9 +312,12 @@ kgsl_bo_init_dmabuf(struct tu_device *dev,
 
    ret = safe_ioctl(dev->physical_device->local_fd,
                     IOCTL_KGSL_GPUOBJ_IMPORT, &req);
-   if (ret)
+   if (ret) {
+      int error = errno;
+      close(shared_fd);
       return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                       "Failed to import dma-buf (%s)\n", strerror(errno));
+                       "Failed to import dma-buf (%s)\n", strerror(error));
+   }
 
    struct kgsl_gpuobj_info info_req = {
       .id = req.id,
@@ -306,9 +325,14 @@ kgsl_bo_init_dmabuf(struct tu_device *dev,
 
    ret = safe_ioctl(dev->physical_device->local_fd,
                     IOCTL_KGSL_GPUOBJ_INFO, &info_req);
-   if (ret)
+   if (ret) {
+      int error = errno;
+      struct kgsl_gpumem_free_id free = { .id = req.id };
+      safe_ioctl(dev->physical_device->local_fd, IOCTL_KGSL_GPUMEM_FREE_ID, &free);
+      close(shared_fd);
       return vk_errorf(dev, VK_ERROR_OUT_OF_DEVICE_MEMORY,
-                       "Failed to get dma-buf info (%s)\n", strerror(errno));
+                       "Failed to get dma-buf info (%s)\n", strerror(error));
+   }
 
    struct tu_bo* bo = tu_device_lookup_bo(dev, req.id);
    assert(bo && bo->gem_handle == 0);
@@ -319,7 +343,7 @@ kgsl_bo_init_dmabuf(struct tu_device *dev,
       .iova = info_req.gpuaddr,
       .name = tu_debug_bos_add(dev, info_req.size, "dmabuf"),
       .refcnt = 1,
-      .shared_fd = os_dupfd_cloexec(fd),
+      .shared_fd = shared_fd,
    };
 
    tu_dump_bo_init(dev, bo);
@@ -1413,11 +1437,11 @@ tu_knl_kgsl_load(struct tu_instance *instance, int fd)
    static const char ion_path[] = "/dev/ion";
    int dma_fd;
 
-   dma_fd = open(dma_heap_path, O_RDONLY);
+   dma_fd = open(dma_heap_path, O_RDONLY | O_CLOEXEC);
    if (dma_fd >= 0) {
       device->kgsl_dma_type = TU_KGSL_DMA_TYPE_DMAHEAP;
    } else {
-      dma_fd = open(ion_path, O_RDONLY);
+      dma_fd = open(ion_path, O_RDONLY | O_CLOEXEC);
       if (dma_fd >= 0) {
          /* ION_IOC_FREE available only for legacy ION */
          struct ion_handle_data free = { .handle = 0 };
