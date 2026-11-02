@@ -235,6 +235,7 @@ branch of the member gitlab server.
 
         <type category="basetype">struct <name>ANativeWindow</name>;</type>
         <type category="basetype">struct <name>AHardwareBuffer</name>;</type>
+        <type category="basetype">struct <name>OHBufferHandle</name>;</type>
         <type category="basetype">#ifdef __OBJC__
 @class CAMetalLayer;
 #else
@@ -473,6 +474,7 @@ typedef void* <name>MTLSharedEvent_id</name>;
         <type                                             category="bitmask">typedef <type>VkFlags</type> <name>VkPipelineRasterizationStateStreamCreateFlagsEXT</name>;</type>
         <type                                             category="bitmask">typedef <type>VkFlags</type> <name>VkPipelineRasterizationDepthClipStateCreateFlagsEXT</name>;</type>
         <type requires="VkSwapchainImageUsageFlagBitsANDROID" category="bitmask">typedef <type>VkFlags</type> <name>VkSwapchainImageUsageFlagsANDROID</name>;</type>
+        <type requires="VkSwapchainImageUsageFlagBitsOHOS" category="bitmask">typedef <type>VkFlags</type> <name>VkSwapchainImageUsageFlagsOHOS</name>;</type>
         <type requires="VkToolPurposeFlagBits"            category="bitmask">typedef <type>VkFlags</type> <name>VkToolPurposeFlags</name>;</type>
         <type                                             category="bitmask" name="VkToolPurposeFlagsEXT"                     alias="VkToolPurposeFlags"/>
         <type requires="VkSubmitFlagBits"                 category="bitmask">typedef <type>VkFlags</type> <name>VkSubmitFlags</name>;</type>
@@ -896,6 +898,7 @@ typedef void* <name>MTLSharedEvent_id</name>;
         <type name="VkShaderFloatControlsIndependence" category="enum"/>
         <type category="enum" name="VkShaderFloatControlsIndependenceKHR"          alias="VkShaderFloatControlsIndependence"/>
         <type name="VkSwapchainImageUsageFlagBitsANDROID" category="enum"/>
+        <type name="VkSwapchainImageUsageFlagBitsOHOS" category="enum"/>
         <type name="VkFragmentShadingRateCombinerOpKHR" category="enum"/>
         <type name="VkSubmitFlagBits" category="enum"/>
         <type category="enum" name="VkSubmitFlagBitsKHR"                           alias="VkSubmitFlagBits"/>
@@ -3978,6 +3981,21 @@ typedef void* <name>MTLSharedEvent_id</name>;
         </type>
         <type category="struct" name="VkPhysicalDevicePresentationPropertiesANDROID">
             <member values="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID"><type>VkStructureType</type> <name>sType</name></member>
+            <member optional="true">const <type>void</type>* <name>pNext</name></member>
+            <member><type>VkBool32</type> <name>sharedImage</name></member>
+        </type>
+        <type category="struct" name="VkNativeBufferOHOS" structextends="VkImageCreateInfo">
+            <member values="VK_STRUCTURE_TYPE_NATIVE_BUFFER_OHOS"><type>VkStructureType</type> <name>sType</name></member>
+            <member optional="true">const <type>void</type>* <name>pNext</name></member>
+            <member>struct <type>OHBufferHandle</type>* <name>handle</name></member>
+        </type>
+        <type category="struct" name="VkSwapchainImageCreateInfoOHOS" structextends="VkImageCreateInfo">
+            <member values="VK_STRUCTURE_TYPE_SWAPCHAIN_IMAGE_CREATE_INFO_OHOS"><type>VkStructureType</type> <name>sType</name></member>
+            <member optional="true">const <type>void</type>* <name>pNext</name></member>
+            <member><type>VkSwapchainImageUsageFlagsOHOS</type> <name>usage</name></member>
+        </type>
+        <type category="struct" name="VkPhysicalDevicePresentationPropertiesOHOS" structextends="VkPhysicalDeviceProperties2" returnedonly="true">
+            <member values="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_OHOS"><type>VkStructureType</type> <name>sType</name></member>
             <member optional="true">const <type>void</type>* <name>pNext</name></member>
             <member><type>VkBool32</type> <name>sharedImage</name></member>
         </type>
@@ -10719,6 +10737,9 @@ typedef void* <name>MTLSharedEvent_id</name>;
     <enums name="VkSwapchainImageUsageFlagBitsANDROID" type="bitmask">
       <enum bitpos="0"      name="VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_ANDROID"/>
     </enums>
+    <enums name="VkSwapchainImageUsageFlagBitsOHOS" type="bitmask">
+      <enum bitpos="0"      name="VK_SWAPCHAIN_IMAGE_USAGE_SHARED_BIT_OHOS"/>
+    </enums>
     <enums name="VkTimeDomainKHR" type="enum">
         <enum value="0"     name="VK_TIME_DOMAIN_DEVICE_KHR"/>
         <enum value="1"     name="VK_TIME_DOMAIN_CLOCK_MONOTONIC_KHR"/>
@@ -16241,6 +16262,29 @@ typedef void* <name>MTLSharedEvent_id</name>;
             <param><type>VkPhysicalDevice</type> <name>physicalDevice</name></param>
             <param optional="false,true"><type>uint32_t</type>* <name>pPropertyCount</name></param>
             <param optional="true" len="pPropertyCount"><type>VkCooperativeMatrixFlexibleDimensionsPropertiesNV</type>* <name>pProperties</name></param>
+        </command>
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_FORMAT_NOT_SUPPORTED,VK_ERROR_OUT_OF_HOST_MEMORY">
+            <proto><type>VkResult</type> <name>vkGetSwapchainGrallocUsageOHOS</name></proto>
+            <param><type>VkDevice</type> <name>device</name></param>
+            <param><type>VkFormat</type> <name>format</name></param>
+            <param><type>VkImageUsageFlags</type> <name>imageUsage</name></param>
+            <param><type>uint64_t</type>* <name>grallocUsage</name></param>
+        </command>
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_TIMEOUT,VK_ERROR_INITIALIZATION_FAILED">
+            <proto><type>VkResult</type> <name>vkAcquireImageOHOS</name></proto>
+            <param><type>VkDevice</type> <name>device</name></param>
+            <param><type>VkImage</type> <name>image</name></param>
+            <param><type>int32_t</type> <name>nativeFenceFd</name></param>
+            <param><type>VkSemaphore</type> <name>semaphore</name></param>
+            <param><type>VkFence</type> <name>fence</name></param>
+        </command>
+        <command successcodes="VK_SUCCESS" errorcodes="VK_ERROR_OUT_OF_HOST_MEMORY,VK_TIMEOUT,VK_ERROR_INITIALIZATION_FAILED">
+            <proto><type>VkResult</type> <name>vkQueueSignalReleaseImageOHOS</name></proto>
+            <param><type>VkQueue</type> <name>queue</name></param>
+            <param><type>uint32_t</type> <name>waitSemaphoreCount</name></param>
+            <param len="waitSemaphoreCount">const <type>VkSemaphore</type>* <name>pWaitSemaphores</name></param>
+            <param><type>VkImage</type> <name>image</name></param>
+            <param><type>int32_t</type>* <name>pNativeFenceFd</name></param>
         </command>
     </commands>
 
@@ -26532,6 +26576,25 @@ typedef void* <name>MTLSharedEvent_id</name>;
                 <type name="VkSurfaceCreateFlagsOHOS"/>
                 <type name="VkSurfaceCreateInfoOHOS"/>
                 <command name="vkCreateSurfaceOHOS"/>
+            </require>
+        </extension>
+        <extension name="VK_OHOS_native_buffer" number="687" type="device" author="OHOS" platform="ohos" contact="Zhao Zhang @andrew0229" supported="vulkan">
+            <require>
+                <comment>Native loader/driver buffer interface. Structure values follow the deployed OpenHarmony headers.</comment>
+                <enum value="1" name="VK_OHOS_NATIVE_BUFFER_SPEC_VERSION"/>
+                <enum value="&quot;VK_OHOS_native_buffer&quot;" name="VK_OHOS_NATIVE_BUFFER_EXTENSION_NAME"/>
+                <enum value="1000453001" extends="VkStructureType" name="VK_STRUCTURE_TYPE_NATIVE_BUFFER_OHOS"/>
+                <enum value="1000453002" extends="VkStructureType" name="VK_STRUCTURE_TYPE_SWAPCHAIN_IMAGE_CREATE_INFO_OHOS"/>
+                <enum value="1000453003" extends="VkStructureType" name="VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_OHOS"/>
+                <type name="OHBufferHandle"/>
+                <type name="VkNativeBufferOHOS"/>
+                <type name="VkSwapchainImageCreateInfoOHOS"/>
+                <type name="VkPhysicalDevicePresentationPropertiesOHOS"/>
+                <type name="VkSwapchainImageUsageFlagBitsOHOS"/>
+                <type name="VkSwapchainImageUsageFlagsOHOS"/>
+                <command name="vkGetSwapchainGrallocUsageOHOS"/>
+                <command name="vkAcquireImageOHOS"/>
+                <command name="vkQueueSignalReleaseImageOHOS"/>
             </require>
         </extension>
     </extensions>
