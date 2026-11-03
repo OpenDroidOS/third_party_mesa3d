@@ -330,6 +330,9 @@ get_device_extensions(const struct tu_physical_device *device,
       .GOOGLE_user_type = true,
       .IMG_filter_cubic = device->info->a6xx.has_tex_filter_cubic,
       .NV_compute_shader_derivatives = device->info->chip >= 7,
+#ifdef TU_OHOS_NATIVE_BUFFER
+      .OHOS_native_buffer = true,
+#endif
       .VALVE_mutable_descriptor_type = true,
    } };
 

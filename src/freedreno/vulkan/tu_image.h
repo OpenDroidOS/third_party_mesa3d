@@ -50,6 +50,7 @@ struct tu_image
 
 #if DETECT_OS_OHOS
    VkDeviceMemory ohos_memory;
+   struct tu_ohos_buffer_state *ohos_buffer;
 #endif
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(tu_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)

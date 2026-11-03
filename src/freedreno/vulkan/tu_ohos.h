@@ -9,6 +9,7 @@
 
 struct tu_ohos_buffer {
    int fd;
+   const BufferHandle *handle;
    QcomBufferLayout layout;
 };
 

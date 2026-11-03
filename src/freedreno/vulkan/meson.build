@@ -66,6 +66,9 @@ tu_flags = []
 if with_platform_ohos
   libtu_files += files('tu_ohos.cc')
   tu_deps += dependency('qcom-native-buffer')
+  if get_option('freedreno-ohos-native-buffer')
+    tu_flags += '-DTU_OHOS_NATIVE_BUFFER'
+  endif
 endif
 
 tu_wsi = false

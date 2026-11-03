@@ -423,6 +423,10 @@ with_platform_windows = _platforms.contains('windows')
 with_platform_macos = _platforms.contains('macos')
 with_platform_ohos = _platforms.contains('ohos')
 
+if get_option('freedreno-ohos-native-buffer') and not with_platform_ohos
+  error('The native HDI buffer interface requires the OHOS platform')
+endif
+
 if with_platform_ohos
   pre_args += '-DVK_USE_PLATFORM_OHOS=1'
   system_has_kms_drm = false

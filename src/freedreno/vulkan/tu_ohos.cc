@@ -9,6 +9,9 @@
 #include "tu_image.h"
 #include "tu_entrypoints.h"
 #include "vk_physical_device.h"
+#include "vk_common_entrypoints.h"
+#include "qcom/buffer_metadata.h"
+#include "qcom/native_buffer_export.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -24,6 +27,10 @@
 namespace native_display {
 #include <display_type.h>
 }
+
+struct tu_ohos_buffer_state {
+   BufferHandle *handle;
+};
 
 static uint32_t
 image_drm_format(VkFormat format)
@@ -52,7 +59,8 @@ tu_ohos_buffer_layout(struct tu_device *device, const VkImageCreateInfo *info,
                        VkSubresourceLayout *planes, struct tu_ohos_buffer *buffer)
 {
    QcomBufferLayout layout;
-   if (qcom_buffer_read_layout(handle, &layout) != 0 ||
+   if (!handle || OHOS::Qcom::BufferMetadata::Validate(*handle) != 0 ||
+       qcom_buffer_read_layout(handle, &layout) != 0 ||
        info->imageType != VK_IMAGE_TYPE_2D || info->extent.depth != 1 ||
        (info->tiling != VK_IMAGE_TILING_OPTIMAL && info->tiling != VK_IMAGE_TILING_LINEAR) ||
        info->mipLevels != 1 || info->arrayLayers != 1 ||
@@ -104,12 +112,13 @@ tu_ohos_buffer_layout(struct tu_device *device, const VkImageCreateInfo *info,
       planes[i].rowPitch = layout.planes[i].row_pitch;
    }
    buffer->fd = handle->fd;
+   buffer->handle = handle;
    buffer->layout = layout;
    return VK_SUCCESS;
 }
 
-VkResult
-tu_ohos_import_buffer(struct tu_device *device, struct tu_image *image,
+static VkResult
+import_memory(struct tu_device *device, struct tu_image *image,
                        const struct tu_ohos_buffer *buffer,
                        const VkAllocationCallbacks *alloc)
 {
@@ -186,6 +195,34 @@ tu_ohos_import_buffer(struct tu_device *device, struct tu_image *image,
    return result;
 }
 
+VkResult
+tu_ohos_import_buffer(struct tu_device *device, struct tu_image *image,
+                       const struct tu_ohos_buffer *buffer,
+                       const VkAllocationCallbacks *alloc)
+{
+   if (!buffer->handle || image->ohos_buffer || image->ohos_memory != VK_NULL_HANDLE)
+      return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
+   struct tu_ohos_buffer_state *state = (struct tu_ohos_buffer_state *)vk_zalloc2(
+      &device->vk.alloc, alloc, sizeof(*state), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!state)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   int error = OHOS::Qcom::BufferMetadata::Clone(*buffer->handle, state->handle);
+   if (error != 0) {
+      vk_free2(&device->vk.alloc, alloc, state);
+      return vk_error(device, error == -ENOMEM ? VK_ERROR_OUT_OF_HOST_MEMORY :
+                      error == -EMFILE || error == -ENFILE ? VK_ERROR_TOO_MANY_OBJECTS :
+                      VK_ERROR_INVALID_EXTERNAL_HANDLE);
+   }
+   image->ohos_buffer = state;
+   struct tu_ohos_buffer retained = *buffer;
+   retained.fd = state->handle->fd;
+   retained.handle = state->handle;
+   VkResult result = import_memory(device, image, &retained, alloc);
+   if (result != VK_SUCCESS)
+      tu_ohos_free_buffer(device, image, alloc);
+   return result;
+}
+
 void
 tu_ohos_free_buffer(struct tu_device *device, struct tu_image *image,
                      const VkAllocationCallbacks *alloc)
@@ -194,6 +231,32 @@ tu_ohos_free_buffer(struct tu_device *device, struct tu_image *image,
       device->vk.dispatch_table.FreeMemory(tu_device_to_handle(device), image->ohos_memory, alloc);
       image->ohos_memory = VK_NULL_HANDLE;
    }
+   if (image->ohos_buffer) {
+      OHOS::Qcom::FreeNativeBuffer(image->ohos_buffer->handle);
+      vk_free2(&device->vk.alloc, alloc, image->ohos_buffer);
+      image->ohos_buffer = nullptr;
+   }
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+tu_AcquireImageOHOS(VkDevice _device, VkImage _image, int nativeFenceFd,
+                    VkSemaphore semaphore, VkFence fence)
+{
+   VK_FROM_HANDLE(tu_device, device, _device);
+   VK_FROM_HANDLE(tu_image, image, _image);
+   int error = image && image->ohos_buffer ?
+      OHOS::Qcom::BufferMetadata::EndCpuAccess(*image->ohos_buffer->handle) : -EINVAL;
+   if (error != 0) {
+      /* Acquire owns this fd even when cache ownership cannot be transferred.
+       * No semaphore/fence import may make the image available on this path.
+       */
+      if (nativeFenceFd >= 0)
+         close(nativeFenceFd);
+      return vk_error(device, error == -ENOMEM ? VK_ERROR_OUT_OF_HOST_MEMORY :
+                      error == -EAGAIN || error == -EWOULDBLOCK ? VK_TIMEOUT :
+                      VK_ERROR_INITIALIZATION_FAILED);
+   }
+   return vk_common_AcquireImageOHOS(_device, _image, nativeFenceFd, semaphore, fence);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
