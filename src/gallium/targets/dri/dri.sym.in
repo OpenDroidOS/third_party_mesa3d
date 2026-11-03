@@ -10,6 +10,7 @@
                 _mesa_glapi_set_dispatch;
                 _mesa_glapi_tls_Context;
                 _mesa_glapi_tls_Dispatch;
+                @ohos_glapi_tls_exports@
 
 		ddebug_screen_create;
 		noop_screen_create;

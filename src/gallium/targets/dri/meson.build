@@ -23,6 +23,14 @@ if with_gallium_va or with_gallium_vdpau
   endif
 endif
 
+# OHOS client entry points use Clang's emulated TLS descriptors across DSOs.
+# Keep those descriptors visible alongside the shared GL dispatch variables.
+sym_config.set('ohos_glapi_tls_exports', '')
+if with_platform_ohos
+  sym_config.set('ohos_glapi_tls_exports',
+    '__emutls_v._mesa_glapi_tls_Dispatch; __emutls_v._mesa_glapi_tls_Context;')
+endif
+
 dri_sym = configure_file(input : 'dri.sym.in', output : 'dri.sym', configuration : sym_config)
 
 if with_ld_version_script
