@@ -126,6 +126,11 @@ if with_dri
   if with_platform_ohos
     deps_for_egl += [dependency('libsurface')]
     files_egl += files('drivers/dri2/platform_ohos.c')
+    if get_option('egl-ohos-native-buffer')
+      deps_for_egl += dependency('qcom-native-buffer')
+      files_egl += files('drivers/dri2/platform_ohos_buffer.cpp')
+      c_args_for_egl += '-DHAVE_OHOS_NATIVE_BUFFER'
+    endif
   endif
 elif with_platform_haiku
   c_args_for_egl += [

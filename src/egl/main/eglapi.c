@@ -405,7 +405,6 @@ static void
 setenv_to_ohos(void)
 {
    setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 0);
-   setenv("MESA_GLES_VERSION_OVERRIDE", "3.2", 0);
    setenv("MESA_SHADER_CACHE_DIR", "/data/storage/el2/base/cache/", 1);
 }
 
@@ -619,6 +618,8 @@ _eglCreateExtensionsString(_EGLDisplay *disp)
 
    _EGL_CHECK_EXTENSION(NV_context_priority_realtime);
    _EGL_CHECK_EXTENSION(NV_post_sub_buffer);
+
+   _EGL_CHECK_EXTENSION(OHOS_image_native_buffer);
 
    _EGL_CHECK_EXTENSION(WL_bind_wayland_display);
    _EGL_CHECK_EXTENSION(WL_create_wayland_buffer_from_image);

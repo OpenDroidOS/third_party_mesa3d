@@ -122,6 +122,7 @@ Linux, FreeBSD, and other operating systems.
    isaspec
    rusticl
    android
+   ohos
    macos
    Linux Kernel Drivers <https://www.kernel.org/doc/html/latest/gpu/>
 

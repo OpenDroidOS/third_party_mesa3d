@@ -427,6 +427,10 @@ if get_option('freedreno-ohos-native-buffer') and not with_platform_ohos
   error('The native HDI buffer interface requires the OHOS platform')
 endif
 
+if get_option('egl-ohos-native-buffer') and not with_platform_ohos
+  error('Native HDI EGL images require the OHOS platform')
+endif
+
 if with_platform_ohos
   pre_args += '-DVK_USE_PLATFORM_OHOS=1'
   system_has_kms_drm = false
@@ -1716,10 +1720,11 @@ foreach d : _libdrm_checks
 endforeach
 
 with_gallium_drisw_kms = false
-if system_has_kms_drm
+# Native HDI images use DMA-BUF importing without selecting a DRM/KMS window system.
+if system_has_kms_drm or get_option('egl-ohos-native-buffer')
   dep_libdrm = dependency(
     'libdrm', version : '>=' + _drm_ver,
-    required : with_dri2 or with_dri or with_gbm
+    required : with_dri2 or with_dri or with_gbm or get_option('egl-ohos-native-buffer')
   )
 else
   # We should prevent libdrm from being available when the target doesn't have it to avoid transitive
@@ -1728,7 +1733,7 @@ else
 endif
 if dep_libdrm.found()
   pre_args += '-DHAVE_LIBDRM'
-  if with_dri_platform == 'drm' and with_dri
+  if system_has_kms_drm and with_dri_platform == 'drm' and with_dri
     with_gallium_drisw_kms = true
   endif
 endif

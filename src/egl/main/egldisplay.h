@@ -157,6 +157,8 @@ struct _egl_extensions {
    EGLBoolean NV_post_sub_buffer;
    EGLBoolean NV_context_priority_realtime;
 
+   EGLBoolean OHOS_image_native_buffer;
+
    EGLBoolean WL_bind_wayland_display;
    EGLBoolean WL_create_wayland_buffer_from_image;
 };

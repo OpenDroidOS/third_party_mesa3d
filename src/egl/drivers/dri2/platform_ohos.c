@@ -12,6 +12,10 @@
 #include "display_type.h"
 #include "external_window.h"
 
+#ifdef HAVE_OHOS_NATIVE_BUFFER
+#include "platform_ohos_buffer.h"
+#endif
+
 static _EGLSurface *
 ohos_create_surface(_EGLDisplay *disp, EGLint type, _EGLConfig *conf,
                     void *native_window, const EGLint *attrib_list)
@@ -113,11 +117,89 @@ ohos_swap_buffers(_EGLDisplay *disp, _EGLSurface *draw)
    return EGL_TRUE;
 }
 
+#ifdef HAVE_OHOS_NATIVE_BUFFER
+static _EGLImage *
+ohos_create_native_image(_EGLDisplay *disp, _EGLContext *ctx,
+                          EGLClientBuffer buffer, const EGLint *attrib_list)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   if (!disp->Extensions.OHOS_image_native_buffer) {
+      _eglError(EGL_BAD_PARAMETER, "Native HDI image importing is unavailable");
+      return NULL;
+   }
+   if (ctx) {
+      _eglError(EGL_BAD_CONTEXT, "Native HDI images require EGL_NO_CONTEXT");
+      return NULL;
+   }
+   /* The native buffer describes its dimensions and format. Only preservation
+    * is meaningful here; texture, DMA-BUF and protected-image attributes do not
+    * override that contract.
+    */
+   if (attrib_list) {
+      for (unsigned i = 0; attrib_list[i] != EGL_NONE; i += 2) {
+         if (attrib_list[i] != EGL_IMAGE_PRESERVED_KHR ||
+             (attrib_list[i + 1] != EGL_TRUE && attrib_list[i + 1] != EGL_FALSE)) {
+            _eglError(EGL_BAD_PARAMETER, "Unsupported native HDI image attribute");
+            return NULL;
+         }
+      }
+   }
+
+   BufferHandle *handle = NULL;
+   struct QcomBufferLayout layout;
+   int result = ohos_clone_native_buffer(buffer, &handle, &layout);
+   if (result != 0) {
+      EGLint error = result == -ENOMEM || result == -EMFILE || result == -ENFILE ?
+                        EGL_BAD_ALLOC : result == -EAGAIN ? EGL_BAD_ACCESS : EGL_BAD_PARAMETER;
+      _eglError(error, "Invalid or unavailable managed native HDI buffer");
+      return NULL;
+   }
+
+   /* Multiplanar color conversion needs the buffer's actual color metadata.
+    * Keep that unsupported path explicit rather than inventing YUV defaults.
+    */
+   if (layout.plane_count != 1 || handle->usage & HBM_USE_PROTECTED ||
+       layout.planes[0].offset > INT_MAX) {
+      ohos_destroy_native_buffer(handle);
+      _eglError(EGL_BAD_MATCH, "Unsupported native HDI image layout or protection");
+      return NULL;
+   }
+   int stride = layout.planes[0].row_pitch;
+   int offset = layout.planes[0].offset;
+   unsigned error = __DRI_IMAGE_ERROR_SUCCESS;
+   struct dri_image *image = dri2_from_dma_bufs(
+      dri2_dpy->dri_screen_render_gpu, handle->width, handle->height,
+      layout.drm_format, layout.modifier, &handle->fd, 1, &stride, &offset,
+      0, 0, 0, 0, 0, &error, handle);
+   if (!image) {
+      ohos_destroy_native_buffer(handle);
+      _eglError(error == __DRI_IMAGE_ERROR_BAD_ALLOC ? EGL_BAD_ALLOC : EGL_BAD_MATCH,
+                "Native HDI DMA-BUF image import failed");
+      return NULL;
+   }
+   _EGLImage *egl_image = dri2_create_image_from_dri(disp, image);
+   if (!egl_image)
+      dri2_destroy_image(image);
+   return egl_image;
+}
+#endif
+
+static _EGLImage *
+ohos_create_image(_EGLDisplay *disp, _EGLContext *ctx, EGLenum target,
+                   EGLClientBuffer buffer, const EGLint *attrib_list)
+{
+#ifdef HAVE_OHOS_NATIVE_BUFFER
+   if (target == EGL_NATIVE_BUFFER_OHOS)
+      return ohos_create_native_image(disp, ctx, buffer, attrib_list);
+#endif
+   return dri2_create_image_khr(disp, ctx, target, buffer, attrib_list);
+}
+
 static const struct dri2_egl_display_vtbl dri2_ohos_display_vtbl = {
    .create_window_surface = ohos_create_window_surface,
    .create_pbuffer_surface = ohos_create_pbuffer_surface,
    .destroy_surface = device_destroy_surface,
-   .create_image = dri2_create_image_khr,
+   .create_image = ohos_create_image,
    .get_dri_drawable = dri2_surface_get_dri_drawable,
    .swap_buffers = ohos_swap_buffers,
 };
@@ -203,7 +285,12 @@ ohos_get_capability(void *loaderPrivate, enum dri_loader_cap cap)
 }
 
 static const __DRIdri2LoaderExtension dri2_loader_extension = {
+#ifdef HAVE_OHOS_NATIVE_BUFFER
+   .base = {__DRI_DRI2_LOADER, 5},
+   .destroyLoaderImageState = ohos_destroy_native_buffer,
+#else
    .base = {__DRI_DRI2_LOADER, 4},
+#endif
    .getCapability = ohos_get_capability,
 };
 
@@ -315,6 +402,9 @@ dri2_initialize_ohos(_EGLDisplay *disp)
    }
 
    dri2_setup_screen(disp);
+#ifdef HAVE_OHOS_NATIVE_BUFFER
+   disp->Extensions.OHOS_image_native_buffer = dri2_dpy->has_dmabuf_import;
+#endif
 
    /* Create configs *after* enabling extensions because presence of DRI
     * driver extensions can affect the capabilities of EGLConfigs.

@@ -802,3 +802,10 @@ option(
   value : false,
   description : 'Enable the paired native HDI buffer import and fence interface.'
 )
+
+option(
+  'egl-ohos-native-buffer',
+  type : 'boolean',
+  value : false,
+  description : 'Import managed native HDI buffers in the OHOS EGL platform.'
+)
